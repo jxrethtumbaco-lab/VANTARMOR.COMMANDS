@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050505">
+  <title>Administración Premium · Vantarmor</title>
+  <link rel="stylesheet" href="/assets/style.css?v=4">
+  <link rel="stylesheet" href="/assets/admin.css?v=1">
+  <script src="/assets/admin.js?v=1" defer></script>
+</head>
+<body class="admin-page">
+  <header class="topbar admin-topbar">
+    <a class="brand" href="/"><span class="brand-mark">V</span> VANTARMOR <strong>COMMANDS</strong></a>
+    <a class="button button-small secondary" href="/">← Página principal</a>
+  </header>
+  <main class="admin-shell">
+    <section class="admin-heading"><p class="eyebrow">PANEL PRIVADO</p><h1>Administración</h1><p>Gestiona Premium y la apariencia del bot en servidores donde está conectado.</p></section>
+    <section id="login" class="admin-panel" hidden><h2>Inicia sesión</h2><p>Entra con Discord para comprobar tus permisos.</p><a class="button" href="/auth/discord">Iniciar sesión con Discord</a></section>
+    <section id="denied" class="admin-panel" hidden><h2>Acceso restringido</h2><p>Solo los usuarios incluidos en <code>PREMIUM_MANAGER_IDS</code> en Railway pueden usar este panel.</p></section>
+    <section id="dashboard" hidden>
+      <div class="admin-grid">
+        <section class="admin-panel"><p class="eyebrow">KEYS</p><h2>Generar key Premium</h2><form id="key-form" class="admin-form"><label for="key-days">Días de Premium</label><input id="key-days" type="number" min="1" max="3650" value="30" required><button class="button" type="submit">Generar key</button></form><div id="key-result" class="key-result" hidden><code id="generated-key"></code><button id="copy-key" class="button secondary" type="button">Copiar</button></div></section>
+        <section class="admin-panel"><p class="eyebrow">ACCESO DIRECTO</p><h2>Conceder Premium sin key</h2><form id="grant-form" class="admin-form"><label for="user-search">Buscar usuario</label><input id="user-search" type="search" placeholder="Nombre o ID"><label for="user-select">Cuenta</label><select id="user-select"><option value="">Cargando…</option></select><label class="check-label"><input id="permanent" type="checkbox"> Premium permanente</label><label for="grant-days">Días</label><input id="grant-days" type="number" min="1" max="3650" value="30"><button class="button" type="submit">Conceder Premium</button></form></section>
+        <section class="admin-panel"><p class="eyebrow">REVOCAR</p><h2>Quitar acceso Premium</h2><p>Revoca el acceso de la cuenta seleccionada o invalida una key.</p><button id="revoke-user" class="button danger" type="button">Revocar cuenta seleccionada</button><form id="revoke-key-form" class="admin-form"><label for="revoke-key">Key que quieres invalidar</label><input id="revoke-key" type="text" autocomplete="off" maxlength="160" placeholder="VANT-…"><button class="button danger" type="submit">Revocar key</button></form></section>
+      </div>
+      <p id="status" class="admin-status" role="status" aria-live="polite"></p>
+      <section class="admin-panel users-panel"><div class="users-heading"><div><p class="eyebrow">CUENTAS</p><h2>Usuarios registrados</h2></div><button id="refresh" class="button secondary" type="button">Actualizar</button></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Usuario</th><th>ID</th><th>Premium</th><th>Vence</th></tr></thead><tbody id="users"></tbody></table></div></section>
+      <section class="admin-panel guild-profile-panel">
+        <p class="eyebrow">PERFIL POR SERVIDOR</p><h2>Apodo e imagen del bot</h2>
+        <p>Estas modificaciones solo afectan el perfil del bot en el servidor seleccionado. Solo aparecen servidores que administras y donde Vantarmor está conectado.</p>
+        <form id="guild-profile-form" class="admin-form guild-profile-form">
+          <label for="guild-select">Servidor</label><select id="guild-select" required><option value="">Cargando servidores…</option></select>
+          <label for="bot-nickname">Apodo del bot (máximo 32 caracteres)</label><input id="bot-nickname" type="text" maxlength="32" placeholder="Dejar vacío para quitar el apodo">
+          <label for="bot-avatar">Imagen del bot en este servidor</label><input id="bot-avatar" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+          <p class="hint">PNG, JPG, WEBP o GIF; máximo 2 MB. Si no seleccionas imagen, se conserva la imagen actual.</p>
+          <img id="avatar-preview" alt="Vista previa de imagen" hidden>
+          <button class="button" id="save-guild-profile" type="submit">Aplicar en este servidor</button>
+        </form>
+        <p id="guild-profile-status" class="admin-status" role="status" aria-live="polite"></p>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

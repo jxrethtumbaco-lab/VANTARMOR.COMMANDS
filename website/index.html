@@ -1,13 +1,32 @@
 <!doctype html>
 <html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>VANTARMOR</title>
-  </head>
-  <body>
-    <main>
-      <h1>VANTARMOR</h1>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050505">
+  <meta name="description" content="Vantarmor Commands: herramientas de moderación y seguridad para comunidades de Discord.">
+  <title>Vantarmor Commands</title>
+  <link rel="stylesheet" href="/assets/style.css?v=7">
+  <link rel="stylesheet" href="/assets/plans.css?v=7">
+  <script src="/assets/app.js?v=7" defer></script>
+  <style>[hidden] { display: none !important; }</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#inicio" aria-label="Vantarmor Commands, inicio"><span class="brand-mark">V</span> VANTARMOR <strong>COMMANDS</strong></a>
+    <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menú" aria-expanded="false">☰</button>
+    <nav id="nav" aria-label="Navegación principal"><a href="#inicio">Inicio</a><a href="#estado">Estado</a><a href="#funciones">Funciones</a><a href="#planes">Planes</a><a href="#invitar">Invitar bot</a><a href="#cuenta">Cuenta</a></nav>
+    <a class="button button-small" id="login-link" href="/auth/discord">Iniciar sesión</a>
+  </header>
+  <main>
+    <section id="inicio" class="hero"><div><p class="eyebrow">SEGURIDAD PARA TU COMUNIDAD</p><h1>Tu servidor.<br><span>Bajo control.</span></h1><p class="lead">Herramientas de moderación, protección y soporte para que tu comunidad de Discord esté más segura y organizada.</p><a class="button" href="#planes">Ver planes <span aria-hidden="true">↗</span></a></div><aside class="hero-card"><div class="badge">VANTARMOR / PANEL</div><div class="shield">V</div><h2>Protección inteligente</h2><p>Moderación, registros y herramientas de comunidad en un solo lugar.</p></aside></section>
+    <section class="section" id="estado"><p class="eyebrow">EN TIEMPO REAL</p><h2>Estado del servicio</h2><div class="stats"><article><span>Estado del bot</span><strong id="bot-status" class="online">Consultando…</strong></article><article><span>Servidores</span><strong id="server-count">—</strong></article><article><span>Comandos</span><strong id="command-count">—</strong></article><article><span>Usuarios web</span><strong id="user-count">—</strong></article></div></section>
+    <section class="section" id="funciones"><p class="eyebrow">QUÉ INCLUYE</p><h2>Herramientas para tu comunidad</h2><div class="features"><article><h3>Antispam y antilink</h3><p>Reduce mensajes repetidos, enlaces no permitidos y palabras bloqueadas.</p></article><article><h3>Moderación</h3><p>Comandos para gestionar mensajes, miembros y canales con permisos.</p></article><article><h3>Seguridad</h3><p>Protecciones y alertas para ayudarte a responder ante actividad inusual.</p></article><article><h3>Tickets</h3><p>Organiza solicitudes de soporte con canales privados para tu equipo.</p></article></div></section>
+    <section class="section plans-section" id="planes"><p class="eyebrow">ELIGE TU PLAN</p><h2>Planes</h2><p class="plans-intro">La configuración visual del bot por servidor es gratis. Premium habilita funciones adicionales del bot.</p><div class="plans-grid"><article class="plan-card"><span class="plan-tag">PLAN 01</span><h3>Free Plan</h3><p class="plan-summary">Empieza a proteger y personalizar tu servidor.</p><ul><li>Comandos gratuitos</li><li>Configuración visual gratuita</li><li>Apodo e imagen del bot por servidor</li></ul></article><article class="plan-card premium-plan"><span class="plan-tag">PLAN 02 · PREMIUM</span><h3>Premium Plan</h3><p class="plan-summary">Desbloquea funciones Premium en tu cuenta de Discord.</p><ul><li>Funciones Premium del bot</li><li>Protecciones avanzadas</li><li>Canje de key desde tu cuenta web</li></ul><a class="button secondary" href="https://discord.gg/YD7uY3AHz" target="_blank" rel="noopener">Consultar en Discord ↗</a></article></div><article class="redeem-card" id="canjear-key"><div><p class="eyebrow">¿TIENES UNA KEY?</p><h3>Canjea Premium</h3><p>Inicia sesión con Discord y pega tu key para activar Premium en esa cuenta.</p></div><form id="premium-key-form"><label for="premium-key">Key Premium</label><div class="redeem-controls"><input id="premium-key" name="key" type="password" autocomplete="off" maxlength="160" placeholder="Introduce tu key" required><button class="button" id="redeem-button" type="submit">Canjear key</button></div><p id="redeem-status" class="form-status" role="status" aria-live="polite">Inicia sesión con Discord para canjear una key.</p></form></article><p class="plans-note">Las formas de obtener una key se confirman con el equipo de Vantarmor en Discord.</p></section>
+    <section class="section invite" id="invitar"><div><p class="eyebrow">LISTO PARA TU COMUNIDAD</p><h2>Invita Vantarmor</h2><p>Inicia sesión con Discord y elige un servidor donde tengas permisos para añadir el bot.</p><label for="guild-select">Servidor</label><select id="guild-select"><option value="">Inicia sesión para cargar servidores</option></select><a class="button" id="invite-button" href="#invitar">Cargar servidores</a></div><div><p class="eyebrow">CONFIGURACIÓN</p><h3>Permisos del bot</h3><p>Concede solo los permisos que vayas a utilizar y revisa la jerarquía de roles del servidor.</p></div></section>
+    <section class="section account" id="cuenta"><p class="eyebrow">TU CUENTA</p><h2>Cuenta de Discord</h2><article id="profile-card" class="profile"><div class="avatar">?</div><div><strong id="profile-name">No has iniciado sesión</strong><p id="profile-plan">Inicia sesión para configurar el bot o canjear Premium.</p></div></article><div class="account-actions"><a class="button" id="account-login" href="/auth/discord">Iniciar sesión con Discord</a><a class="button secondary" id="admin-panel-link" href="/admin" hidden>Administración Premium</a></div><div id="bot-profile-settings" class="account-settings" hidden><p class="eyebrow">CONFIGURACIÓN GRATUITA DEL BOT</p><h3>Personalizar en tu servidor</h3><p>Selecciona un servidor donde seas administrador y Vantarmor esté conectado. El cambio solo afecta la apariencia del bot en ese servidor.</p><form id="guild-profile-form"><label for="guild-profile-select">Servidor</label><select id="guild-profile-select" required><option value="">Cargando servidores…</option></select><label for="bot-nickname">Apodo del bot</label><input id="bot-nickname" type="text" maxlength="32" placeholder="Dejar vacío para quitar el apodo"><label for="bot-avatar">Imagen del bot en este servidor</label><input id="bot-avatar" type="file" accept="image/png,image/jpeg,image/webp,image/gif"><small>PNG, JPG, WEBP o GIF; máximo 2 MB. Si no eliges imagen, se conserva la actual.</small><img id="avatar-preview" alt="Vista previa" hidden><button class="button" id="save-guild-profile" type="submit">Guardar cambios gratis</button><p id="guild-profile-status" class="form-status" role="status" aria-live="polite"></p></form></div></section>
+  </main>
+  <footer><span class="brand">VANTARMOR <strong>COMMANDS</strong></span><a href="https://discord.gg/YD7uY3AHz" target="_blank" rel="noopener">Soporte en Discord ↗</a></footer>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
 </html>
