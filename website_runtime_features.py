@@ -8,7 +8,7 @@ import guild_profile_settings
 import web_server
 
 _STATUS_LOCK = threading.RLock()
-_STATUS = {"online": False, "servers": 0, "slash_commands": 0, "prefix_commands": 3}
+_STATUS = {"online": False, "servers": 0, "slash_commands": 0, "prefix_commands": 9}
 _STATS_FEATURES = [
     "Anti-Raid y alertas de seguridad",
     "Anti-Nuke con modo pánico manual",
@@ -20,7 +20,6 @@ _STATS_FEATURES = [
 
 
 def _command_leaf_names(commands, prefix=""):
-    """Count slash command leaves, including nested subcommands."""
     names = set()
     for command in commands:
         name = f"{prefix} {command.name}".strip()
@@ -33,7 +32,6 @@ def _command_leaf_names(commands, prefix=""):
 
 
 def count_commands(tree, guild=None):
-    """Count unique global and guild slash command paths."""
     commands = list(tree.get_commands())
     if guild is not None:
         commands.extend(tree.get_commands(guild=guild))
@@ -42,11 +40,7 @@ def count_commands(tree, guild=None):
 
 def set_bot_status(online, guild_count=0, command_count=0):
     with _STATUS_LOCK:
-        _STATUS.update(
-            online=bool(online),
-            servers=max(0, int(guild_count)),
-            slash_commands=max(0, int(command_count)),
-        )
+        _STATUS.update(online=bool(online), servers=max(0, int(guild_count)), slash_commands=max(0, int(command_count)))
 
 
 def _bot_present_guilds(guilds):
@@ -73,7 +67,6 @@ def _manageable_guilds(session):
 
 
 def install_website_api(handler_class):
-    """Serve manageable invite targets separately from bot-installed settings guilds."""
     previous_get = handler_class.do_GET
 
     def do_get(self):
@@ -91,20 +84,12 @@ def install_website_api(handler_class):
                 return self.send_json({"guilds": [{"id": g["id"], "name": g["name"], "bot_installed": g["id"] in installed} for g in manageable]})
             except (HTTPError, URLError, OSError, ValueError, TypeError):
                 return self.send_error_json("No se pudieron cargar tus servidores de Discord.", 502)
-
         if path == "/api/stats":
             from premium_store import public_stats
             stats = public_stats()
             with _STATUS_LOCK:
                 status = dict(_STATUS)
-            stats.update(
-                bot_online=status["online"],
-                servers=status["servers"],
-                slash_commands=status["slash_commands"],
-                prefix_commands=status["prefix_commands"],
-                total_commands=status["slash_commands"] + status["prefix_commands"],
-                security_features=_STATS_FEATURES,
-            )
+            stats.update(bot_online=status["online"], servers=status["servers"], slash_commands=status["slash_commands"], prefix_commands=status["prefix_commands"], total_commands=status["slash_commands"] + status["prefix_commands"], security_features=_STATS_FEATURES)
             return self.send_json(stats)
         return previous_get(self)
 
@@ -112,48 +97,31 @@ def install_website_api(handler_class):
 
 
 def install_bot_status_hooks(app_file):
-    """Idempotently add live status reporting and synchronize guild/global commands."""
     source = app_file.read_text(encoding="utf-8")
     import_anchor = "from discord import app_commands\n"
     if "import website_runtime_features\n" not in source:
         if import_anchor not in source:
             raise RuntimeError("No encontré el bloque de imports de app.py para el estado web.")
         source = source.replace(import_anchor, import_anchor + "import website_runtime_features\n", 1)
-
     ready_anchor = '    print(f"Conectado como {client.user}")\n'
     ready_status = "    website_runtime_features.set_bot_status(True, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n"
     if ready_anchor not in source:
         raise RuntimeError("No encontré on_ready para actualizar el estado de la web.")
     if ready_status not in source:
         source = source.replace(ready_anchor, ready_anchor + ready_status, 1)
-
     sync_line = '        commands = await tree.sync(guild=GUILD)\n        print(f"Comandos sincronizados: {len(commands)}")\n'
-    sync_block = (
-        '        guild_commands = await tree.sync(guild=GUILD)\n'
-        '        global_commands = await tree.sync()\n'
-        '        command_count = website_runtime_features.count_commands(tree, GUILD)\n'
-        '        website_runtime_features.set_bot_status(True, len(client.guilds), command_count)\n'
-        '        print(f"Comandos sincronizados: {command_count} ({len(guild_commands)} de servidor, {len(global_commands)} globales)")\n'
-    )
+    sync_block = '        guild_commands = await tree.sync(guild=GUILD)\n        global_commands = await tree.sync()\n        command_count = website_runtime_features.count_commands(tree, GUILD)\n        website_runtime_features.set_bot_status(True, len(client.guilds), command_count)\n        print(f"Comandos sincronizados: {command_count} ({len(guild_commands)} de servidor, {len(global_commands)} globales)")\n'
     if sync_line in source:
         source = source.replace(sync_line, sync_block, 1)
     elif "global_commands = await tree.sync()" not in source:
         raise RuntimeError("No encontré la sincronización de comandos de app.py.")
-
     run_anchor = "client.run(TOKEN)\n"
     if run_anchor not in source:
         raise RuntimeError("No encontré client.run para conectar el estado web.")
     marker = "# VANTARMOR_WEBSITE_STATUS_HOOKS_V2"
     if marker not in source:
-        hooks = (
-            "@client.event\nasync def on_disconnect():\n"
-            "    website_runtime_features.set_bot_status(False, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n\n\n"
-            "@client.event\nasync def on_resumed():\n"
-            "    website_runtime_features.set_bot_status(True, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n\n\n"
-            f"{marker}\n"
-        )
+        hooks = "@client.event\nasync def on_disconnect():\n    website_runtime_features.set_bot_status(False, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n\n\n@client.event\nasync def on_resumed():\n    website_runtime_features.set_bot_status(True, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n\n\n" + marker + "\n"
         source = source.replace(run_anchor, hooks + run_anchor, 1)
-
     app_file.write_text(source, encoding="utf-8")
 
 
