@@ -1,5 +1,6 @@
 """Per-guild approval flow for newly added Discord bots."""
 from datetime import datetime, timezone
+import os
 from urllib.parse import urlencode
 
 import discord
@@ -189,19 +190,24 @@ async def on_member_join(member: discord.Member):
 
 
 def register_anti_bot_approval(tree, client):
-    """Register the boolean /anti-bot toggle and pending-bot approval listener."""
+    """Register /anti-bot with exactly one required option: accion (activar/desactivar)."""
     if not getattr(client, "anti_bot_approval_listener_registered", False):
         client.event(on_member_join)
         client.anti_bot_approval_listener_registered = True
-    if tree.get_command("anti-bot") is not None:
-        return
 
-    @tree.command(name="anti-bot", description="Activa o desactiva la protección Anti-Bot")
+    guild = discord.Object(id=int(os.getenv("GUILD_ID", "1559455132821753856")))
+    # Remove any older global definition so the next guild sync replaces its stale schema.
+    if tree.get_command("anti-bot") is not None:
+        tree.remove_command("anti-bot")
+    if tree.get_command("anti-bot", guild=guild) is not None:
+        tree.remove_command("anti-bot", guild=guild)
+
+    @tree.command(name="anti-bot", description="Activa o desactiva la protección Anti-Bot", guild=guild)
     @app_commands.choices(accion=[
-        app_commands.Choice(name="Activar", value="activar"),
-        app_commands.Choice(name="Desactivar", value="desactivar"),
+        app_commands.Choice(name="activar", value="activar"),
+        app_commands.Choice(name="desactivar", value="desactivar"),
     ])
-    @app_commands.describe(accion="Elige si activar o desactivar Anti-Bot")
+    @app_commands.describe(accion="Obligatorio: activar o desactivar Anti-Bot")
     async def anti_bot(interaction: discord.Interaction, accion: app_commands.Choice[str]):
         if not await _require_premium_admin(interaction):
             return
