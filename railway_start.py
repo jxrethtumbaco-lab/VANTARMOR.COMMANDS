@@ -4,6 +4,7 @@ import threading
 from pathlib import Path
 
 import web_server
+import website_admin_gate
 import website_public_config
 import website_profile_api
 import website_runtime_features
@@ -34,6 +35,7 @@ website_runtime_features.install_website_api(web_server.Handler)
 website_public_config.install_public_website_config(web_server.Handler)
 website_profile_api.install_profile_api(web_server.Handler)
 guild_profile_settings.install_guild_profile_settings(web_server.Handler)
+website_admin_gate.install_admin_entry(web_server.Handler)
 server = start_website()
 if server is None:
     raise RuntimeError("No se pudo iniciar el sitio: falta website/index.html.")
