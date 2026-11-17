@@ -5,6 +5,7 @@ from pathlib import Path
 
 import web_server
 import website_public_config
+import website_profile_api
 import website_runtime_features
 from abuse_registration_patch import patch_app_file as patch_abuse_protection
 from anti_link_registration_patch import patch_app_file as patch_anti_link
@@ -30,6 +31,7 @@ def run_bot():
 
 website_runtime_features.install_website_api(web_server.Handler)
 website_public_config.install_public_website_config(web_server.Handler)
+website_profile_api.install_profile_api(web_server.Handler)
 server = start_website()
 if server is None:
     raise RuntimeError("No se pudo iniciar el sitio: falta website/index.html.")
