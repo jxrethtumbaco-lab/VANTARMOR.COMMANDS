@@ -1,0 +1,8 @@
+/* Plan cards and Premium key redemption panel. */
+.plans-section .plans-grid { align-items:stretch; }
+.plan-card { position:relative; overflow:hidden; }
+.plan-card::after { position:absolute; top:-72px; right:-72px; width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,.055); filter:blur(30px); content:''; pointer-events:none; }
+.premium-plan::after { background:rgba(105,239,255,.09); }
+.plan-card li::marker { color:#69efff; }
+.redeem-card { transition:border-color .2s,box-shadow .2s; }
+.redeem-card:focus-within { border-color:rgba(105,239,255,.58); box-shadow:0 0 32px rgba(105,239,255,.13); }
