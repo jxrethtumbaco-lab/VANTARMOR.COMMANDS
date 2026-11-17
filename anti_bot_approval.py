@@ -14,13 +14,7 @@ from premium_security_system import (
 
 
 def _invite_url(bot_id: int, guild_id: int) -> str:
-    query = urlencode({
-        "client_id": str(bot_id),
-        "scope": "bot applications.commands",
-        "guild_id": str(guild_id),
-        "disable_guild_select": "true",
-        "permissions": "0",
-    })
+    query = urlencode({"client_id": str(bot_id), "scope": "bot applications.commands", "guild_id": str(guild_id), "disable_guild_select": "true", "permissions": "0"})
     return f"https://discord.com/oauth2/authorize?{query}"
 
 
@@ -30,10 +24,8 @@ async def _find_bot_add_actor(guild: discord.Guild, bot_id: int):
         return None
     try:
         async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.bot_add):
-            target = getattr(entry, "target", None)
-            if getattr(target, "id", None) == bot_id:
-                age = (datetime.now(timezone.utc) - entry.created_at).total_seconds()
-                if age <= 120:
+            if getattr(getattr(entry, "target", None), "id", None) == bot_id:
+                if (datetime.now(timezone.utc) - entry.created_at).total_seconds() <= 120:
                     return entry.user
                 break
     except (discord.Forbidden, discord.HTTPException):
@@ -46,21 +38,12 @@ async def _secure_audit_channel(guild: discord.Guild):
     bot_member = guild.me
     if channel is None or bot_member is None:
         return channel
-
-    # Hide the channel from @everyone and non-admin overrides. Discord's
-    # Administrator permission still grants access; the owner is explicitly allowed.
     try:
-        await channel.set_permissions(
-            guild.default_role,
-            overwrite=discord.PermissionOverwrite(view_channel=False),
-            reason="Restringir auditoria-logs a administradores y propietario",
-        )
+        await channel.set_permissions(guild.default_role, overwrite=discord.PermissionOverwrite(view_channel=False), reason="Restringir auditoria-logs")
         for target, old_overwrite in list(channel.overwrites.items()):
             overwrite = old_overwrite.copy()
             if isinstance(target, discord.Role):
-                if target.is_default():
-                    continue
-                if not target.permissions.administrator:
+                if not target.is_default() and not target.permissions.administrator:
                     overwrite.view_channel = False
                     await channel.set_permissions(target, overwrite=overwrite, reason="Privacidad de auditoria-logs")
             elif isinstance(target, discord.Member):
@@ -71,14 +54,7 @@ async def _secure_audit_channel(guild: discord.Guild):
                 else:
                     overwrite.view_channel = False
                 await channel.set_permissions(target, overwrite=overwrite, reason="Privacidad de auditoria-logs")
-        await channel.set_permissions(
-            bot_member,
-            view_channel=True,
-            send_messages=True,
-            embed_links=True,
-            read_message_history=True,
-            reason="Permitir registros de seguridad",
-        )
+        await channel.set_permissions(bot_member, view_channel=True, send_messages=True, embed_links=True, read_message_history=True, reason="Permitir registros de seguridad")
     except (discord.Forbidden, discord.HTTPException) as exc:
         print(f"No se pudieron asegurar permisos de auditoria-logs en {guild.id}: {type(exc).__name__}")
     return channel
@@ -98,10 +74,7 @@ async def _audit_bot_event(guild: discord.Guild, title: str, detail: str):
 class BotApprovalView(discord.ui.View):
     def __init__(self, client: discord.Client, guild_id: int, bot_id: int, bot_name: str):
         super().__init__(timeout=86400)
-        self.client = client
-        self.guild_id = guild_id
-        self.bot_id = bot_id
-        self.bot_name = bot_name
+        self.client, self.guild_id, self.bot_id, self.bot_name = client, guild_id, bot_id, bot_name
         self.finished = False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -110,7 +83,7 @@ class BotApprovalView(discord.ui.View):
             return False
         guild = self.client.get_guild(self.guild_id)
         if guild is None:
-            await interaction.response.send_message("El servidor ya no está disponible; vuelve a intentarlo después.", ephemeral=True)
+            await interaction.response.send_message("El servidor ya no está disponible.", ephemeral=True)
             return False
         member = guild.get_member(interaction.user.id)
         if member is None:
@@ -119,7 +92,7 @@ class BotApprovalView(discord.ui.View):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 member = None
         if member is None or (member.id != guild.owner_id and not member.guild_permissions.administrator):
-            await interaction.response.send_message("Solo el propietario o un administrador del servidor puede decidir.", ephemeral=True)
+            await interaction.response.send_message("Solo el propietario o un administrador puede decidir.", ephemeral=True)
             return False
         return True
 
@@ -127,9 +100,7 @@ class BotApprovalView(discord.ui.View):
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = self.client.get_guild(self.guild_id)
         if guild is None:
-            await interaction.response.send_message("El servidor ya no está disponible.", ephemeral=True)
-            return
-
+            return await interaction.response.send_message("El servidor ya no está disponible.", ephemeral=True)
         def allow_bot(state):
             allowed = {str(value) for value in state.get("allowed_bots", [])}
             allowed.add(str(self.bot_id))
@@ -137,33 +108,23 @@ class BotApprovalView(discord.ui.View):
             denied = {str(value) for value in state.get("denied_bots", [])}
             denied.discard(str(self.bot_id))
             state["denied_bots"] = sorted(denied)
-
         try:
             _update_guild(guild.id, allow_bot)
         except OSError:
-            await interaction.response.send_message("No pude guardar la autorización. Inténtalo otra vez.", ephemeral=True)
-            return
-
+            return await interaction.response.send_message("No pude guardar la autorización.", ephemeral=True)
         self.finished = True
-        for item in self.children:
-            item.disabled = True
+        for item in self.children: item.disabled = True
         await interaction.response.edit_message(content=f"✅ Se autorizó **{self.bot_name}** para este servidor.", embed=None, view=self)
         link_view = discord.ui.View(timeout=300)
         link_view.add_item(discord.ui.Button(label="Invitar bot al servidor", style=discord.ButtonStyle.link, url=_invite_url(self.bot_id, self.guild_id)))
-        await interaction.followup.send(
-            "Discord requiere que un administrador confirme la instalación. Usa el botón para añadir el bot autorizado; tendrá los permisos que selecciones.",
-            view=link_view,
-            ephemeral=True,
-        )
-        await _audit_bot_event(guild, "✅ Bot autorizado", f"**Bot:** {self.bot_name} (`{self.bot_id}`)\n**Autorizado por:** {interaction.user} (`{interaction.user.id}`). Se proporcionó el enlace OAuth para instalarlo.")
+        await interaction.followup.send("Discord requiere que un administrador confirme la instalación.", view=link_view, ephemeral=True)
+        await _audit_bot_event(guild, "✅ Bot autorizado", f"**Bot:** {self.bot_name} (`{self.bot_id}`)\n**Autorizado por:** {interaction.user} (`{interaction.user.id}`).")
 
     @discord.ui.button(label="🚫 Negar", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = self.client.get_guild(self.guild_id)
         if guild is None:
-            await interaction.response.send_message("El servidor ya no está disponible.", ephemeral=True)
-            return
-
+            return await interaction.response.send_message("El servidor ya no está disponible.", ephemeral=True)
         def deny_bot(state):
             allowed = {str(value) for value in state.get("allowed_bots", [])}
             allowed.discard(str(self.bot_id))
@@ -171,35 +132,29 @@ class BotApprovalView(discord.ui.View):
             denied = {str(value) for value in state.get("denied_bots", [])}
             denied.add(str(self.bot_id))
             state["denied_bots"] = sorted(denied)
-
         try:
             _update_guild(guild.id, deny_bot)
         except OSError:
-            await interaction.response.send_message("No pude guardar la decisión. Inténtalo otra vez.", ephemeral=True)
-            return
-
+            return await interaction.response.send_message("No pude guardar la decisión.", ephemeral=True)
         self.finished = True
-        for item in self.children:
-            item.disabled = True
+        for item in self.children: item.disabled = True
         current_bot = guild.get_member(self.bot_id)
-        kick_result = "El bot ya no estaba en el servidor."
+        result = "El bot ya no estaba en el servidor."
         if current_bot is not None:
-            bot_member = guild.me
-            if bot_member and bot_member.guild_permissions.kick_members:
+            if guild.me and guild.me.guild_permissions.kick_members:
                 try:
-                    await guild.kick(current_bot, reason=f"Anti-Bot: denegado por {interaction.user} ({interaction.user.id})")
-                    kick_result = "Se expulsó el bot del servidor."
+                    await guild.kick(current_bot, reason=f"Anti-Bot denegado por {interaction.user} ({interaction.user.id})")
+                    result = "Se expulsó el bot del servidor."
                 except (discord.Forbidden, discord.HTTPException) as exc:
-                    kick_result = f"No se pudo expulsar; revisa permiso Expulsar miembros y jerarquía ({type(exc).__name__})."
+                    result = f"No se pudo expulsar; revisa permiso y jerarquía ({type(exc).__name__})."
             else:
-                kick_result = "Al bot de seguridad le falta Expulsar miembros; el bot no autorizado sigue dentro."
-        await interaction.response.edit_message(content=f"🚫 Se negó **{self.bot_name}**. {kick_result}", embed=None, view=self)
-        await _audit_bot_event(guild, "🚫 Bot denegado", f"**Bot:** {self.bot_name} (`{self.bot_id}`)\n**Decisión de:** {interaction.user} (`{interaction.user.id}`).\n{kick_result}")
+                result = "Al bot de seguridad le falta Expulsar miembros."
+        await interaction.response.edit_message(content=f"🚫 Se negó **{self.bot_name}**. {result}", embed=None, view=self)
+        await _audit_bot_event(guild, "🚫 Bot denegado", f"**Bot:** {self.bot_name} (`{self.bot_id}`)\n**Decisión de:** {interaction.user} (`{interaction.user.id}`).\n{result}")
 
     async def on_timeout(self):
         self.finished = True
-        for item in self.children:
-            item.disabled = True
+        for item in self.children: item.disabled = True
 
 
 async def on_member_join(member: discord.Member):
@@ -207,51 +162,30 @@ async def on_member_join(member: discord.Member):
         return
     guild = member.guild
     state = _guild_config(guild.id)
-    if not state.get("anti_bot_enabled", False):
+    if not state.get("anti_bot_enabled", False) or str(member.id) in {str(value) for value in state.get("allowed_bots", [])}:
         return
-    if str(member.id) in {str(value) for value in state.get("allowed_bots", [])}:
-        return
-
     actor = await _find_bot_add_actor(guild, member.id)
-    # Reject immediately so an unapproved bot cannot operate while the owner decides.
     kicked = False
-    bot_member = guild.me
-    if bot_member and bot_member.guild_permissions.kick_members:
+    if guild.me and guild.me.guild_permissions.kick_members:
         try:
-            await guild.kick(member, reason="Anti-Bot: requiere autorización del propietario o un administrador")
+            await guild.kick(member, reason="Anti-Bot: requiere autorización de propietario o administrador")
             kicked = True
         except (discord.Forbidden, discord.HTTPException) as exc:
             print(f"No se pudo retirar el bot pendiente {member.id} de {guild.id}: {type(exc).__name__}")
-
-    view = BotApprovalView(member._state._get_client(), guild.id, member.id, str(member))
-    embed = discord.Embed(
-        title="🤖 Solicitud de bot nuevo",
-        description=(
-            f"Un bot extraño quiere ingresar a tu servidor **{guild.name}**.\n\n"
-            f"Por medidas de seguridad, **{member}** (`{member.id}`) todavía no está autorizado.\n"
-            f"¿Qué hacemos?\n\n"
-            f"{'El bot fue retirado mientras esperábamos tu decisión.' if kicked else 'No se pudo retirar automáticamente; comprueba el permiso Expulsar miembros.'}"
-        ),
-        color=discord.Color.orange(),
-    )
+    client = member._state._get_client()
+    view = BotApprovalView(client, guild.id, member.id, str(member))
+    embed = discord.Embed(title="🤖 Solicitud de bot nuevo", description=f"Un bot nuevo solicita entrar a **{guild.name}**.\n\n**Bot:** {member} (`{member.id}`)\n{'Fue retirado mientras se espera la decisión.' if kicked else 'No se pudo retirar automáticamente; comprueba el permiso Expulsar miembros.'}", color=discord.Color.orange())
     recipients = {guild.owner_id}
-    if isinstance(actor, discord.Member) and (actor.id == guild.owner_id or actor.guild_permissions.administrator):
-        recipients.add(actor.id)
-
+    if isinstance(actor, discord.Member) and (actor.id == guild.owner_id or actor.guild_permissions.administrator): recipients.add(actor.id)
     dm_sent = 0
     for recipient_id in recipients:
         try:
-            user = member._state._get_client().get_user(recipient_id) or await member._state._get_client().fetch_user(recipient_id)
-            await user.send(embed=embed, view=BotApprovalView(member._state._get_client(), guild.id, member.id, str(member)))
+            user = client.get_user(recipient_id) or await client.fetch_user(recipient_id)
+            await user.send(embed=embed, view=BotApprovalView(client, guild.id, member.id, str(member)))
             dm_sent += 1
         except (discord.Forbidden, discord.HTTPException, discord.NotFound):
             continue
-
-    await _audit_bot_event(
-        guild,
-        "⚠️ Solicitud de bot no autorizado",
-        f"**Servidor:** {guild.name} (`{guild.id}`)\n**Bot:** {member} (`{member.id}`)\n**Añadido por:** {actor or 'No identificado'}\n**DM entregado:** {dm_sent}\n{'Bot retirado mientras se espera aprobación.' if kicked else 'No se pudo retirar automáticamente; revisar permisos.'}",
-    )
+    await _audit_bot_event(guild, "⚠️ Solicitud de bot no autorizado", f"**Servidor:** {guild.name} (`{guild.id}`)\n**Bot:** {member} (`{member.id}`)\n**Añadido por:** {actor or 'No identificado'}\n**DM entregado:** {dm_sent}\n{'Bot retirado.' if kicked else 'Revisa permisos de expulsión.'}")
 
 
 def register_anti_bot_approval(tree, client):
@@ -259,22 +193,27 @@ def register_anti_bot_approval(tree, client):
     if not getattr(client, "anti_bot_approval_listener_registered", False):
         client.event(on_member_join)
         client.anti_bot_approval_listener_registered = True
-
-    if tree.get_command("anti-bot", guild=discord.Object(id=int(__import__("os").getenv("GUILD_ID", "1559455132821753856")))) is not None:
+    if tree.get_command("anti-bot") is not None:
         return
 
-    @tree.command(name="anti-bot", description="Activa o desactiva la aprobación de bots nuevos")
-    @app_commands.describe(accion="true activa; false desactiva Anti-Bot")
-    async def anti_bot(interaction: discord.Interaction, accion: bool):
+    @tree.command(name="anti-bot", description="Activa o desactiva la protección Anti-Bot")
+    @app_commands.choices(accion=[
+        app_commands.Choice(name="Activar", value="activar"),
+        app_commands.Choice(name="Desactivar", value="desactivar"),
+    ])
+    @app_commands.describe(accion="Elige si activar o desactivar Anti-Bot")
+    async def anti_bot(interaction: discord.Interaction, accion: app_commands.Choice[str]):
         if not await _require_premium_admin(interaction):
             return
+        if interaction.guild is None:
+            return await interaction.response.send_message("Este comando solo funciona en un servidor.", ephemeral=True)
+        enabled = accion.value == "activar"
         try:
-            _update_guild(interaction.guild.id, lambda state: state.update(anti_bot_enabled=bool(accion)))
+            _update_guild(interaction.guild.id, lambda state: state.update(anti_bot_enabled=enabled))
         except OSError:
-            await interaction.response.send_message("No pude guardar la configuración. Inténtalo otra vez.", ephemeral=True)
-            return
-        status = "activada" if accion else "desactivada"
-        explanation = "Los bots nuevos no autorizados serán retirados mientras el propietario/admin decide por DM." if accion else "Los nuevos bots podrán entrar sin aprobación de esta protección."
+            return await interaction.response.send_message("No pude guardar la configuración. Inténtalo otra vez.", ephemeral=True)
+        status = "activada" if enabled else "desactivada"
+        explanation = "Los bots nuevos no autorizados serán retirados mientras se solicita aprobación." if enabled else "La protección ya no revisará los bots nuevos."
         await interaction.response.send_message(f"✅ Protección Anti-Bot {status}. {explanation}", ephemeral=True)
 
 

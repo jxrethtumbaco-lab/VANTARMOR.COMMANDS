@@ -1,4 +1,4 @@
-"""Idempotently register the existing approval command on the clean bot tree."""
+"""Register a clear activate/deactivate slash option for Anti-Bot."""
 from pathlib import Path
 
 

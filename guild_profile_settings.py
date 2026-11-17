@@ -36,15 +36,21 @@ def _discord_json(path, *, token, method="GET", payload=None):
 
 def _manageable_guilds(session):
     import web_server
+
     try:
         guilds = web_server.discord_request("/users/@me/guilds", token=session["access_token"])
     except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError) as error:
-        raise ValueError("No pude consultar tus servidores; inicia sesión otra vez.") from error
-    return {
-        str(guild["id"]): guild.get("name", "Servidor")
-        for guild in guilds
-        if guild.get("owner") or int(guild.get("permissions", "0")) & (0x8 | 0x20)
-    }
+        raise ValueError("No pude consultar tus servidores. Cierra sesión, vuelve a entrar y acepta el permiso de servidores (guilds).") from error
+
+    result = {}
+    for guild in guilds:
+        try:
+            permissions = int(guild.get("permissions", "0"))
+        except (TypeError, ValueError):
+            permissions = 0
+        if guild.get("owner") or permissions & (0x8 | 0x20):
+            result[str(guild.get("id", ""))] = guild.get("name", "Servidor")
+    return result
 
 
 def _bot_token_for_guild(guild_id):
@@ -56,7 +62,7 @@ def _bot_token_for_guild(guild_id):
     except urllib.error.HTTPError as error:
         if error.code in (403, 404):
             raise ValueError("El bot no está unido a ese servidor o ya no tiene acceso.") from error
-        raise ValueError("Discord no pudo validar la pertenencia del bot al servidor.") from error
+        raise ValueError(f"Discord devolvió un error HTTP {error.code} al validar el servidor.") from error
     except (urllib.error.URLError, OSError, ValueError) as error:
         raise ValueError("No se pudo validar el servidor con Discord.") from error
     return token
@@ -94,14 +100,21 @@ def install_guild_profile_settings(handler_class):
             return self.send_error_json("Inicia sesión con Discord.", 401)
         try:
             manageable = _manageable_guilds(session)
+            if not manageable:
+                return self.send_json({"guilds": [], "message": "Tu cuenta no tiene permisos de propietario, Administrador o Gestionar servidor en los servidores recibidos por Discord."})
+
             present = []
             for guild_id, name in manageable.items():
                 try:
                     _bot_token_for_guild(guild_id)
-                except ValueError:
+                except ValueError as error:
+                    # Bot membership is checked with the bot token; only actual non-members are omitted.
+                    if "no está unido" in str(error):
+                        continue
+                    print(f"No se pudo validar el bot en el servidor {guild_id}: {error}")
                     continue
                 present.append({"id": guild_id, "name": name})
-            return self.send_json({"guilds": present})
+            return self.send_json({"guilds": present, "message": "" if present else "No hay servidores administrados donde el bot esté unido. Confirma la sesión Discord y DISCORD_TOKEN en Railway."})
         except ValueError as error:
             return self.send_error_json(str(error), 502)
 
@@ -131,7 +144,7 @@ def install_guild_profile_settings(handler_class):
                 raise ValueError("El apodo no puede superar 32 caracteres.")
             manageable = _manageable_guilds(session)
             if guild_id not in manageable:
-                raise ValueError("El servidor seleccionado ya no está disponible o no tienes permisos de administración.")
+                raise ValueError("El servidor seleccionado ya no está disponible o no tienes permisos. Vuelve a cargar la lista.")
             token = _bot_token_for_guild(guild_id)
             payload = {"nick": nickname or None}
             if avatar_data:

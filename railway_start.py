@@ -10,6 +10,7 @@ import website_profile_api
 import website_runtime_features
 import guild_profile_settings
 from abuse_registration_patch import patch_app_file as patch_abuse_protection
+from anti_bot_registration_patch import patch_app_file as patch_anti_bot
 from anti_link_registration_patch import patch_app_file as patch_anti_link
 from web_server import start_website
 
@@ -23,6 +24,7 @@ def run_bot():
             raise FileNotFoundError(f"No encontré el archivo del bot: {APP_FILE}")
         patch_anti_link(APP_FILE)
         patch_abuse_protection(APP_FILE)
+        patch_anti_bot(APP_FILE)
         website_runtime_features.install_bot_status_hooks(APP_FILE)
         print("Iniciando Vantarmor Commands...")
         runpy.run_path(str(APP_FILE), run_name="__main__")
