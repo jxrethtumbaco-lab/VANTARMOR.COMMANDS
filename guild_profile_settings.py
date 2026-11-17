@@ -36,12 +36,10 @@ def _discord_json(path, *, token, method="GET", payload=None):
 
 def _manageable_guilds(session):
     import web_server
-
     try:
         guilds = web_server.discord_request("/users/@me/guilds", token=session["access_token"])
     except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError) as error:
         raise ValueError("No pude consultar tus servidores; inicia sesión otra vez.") from error
-    # Administrator or Manage Server permission, or guild owner.
     return {
         str(guild["id"]): guild.get("name", "Servidor")
         for guild in guilds
@@ -55,8 +53,12 @@ def _bot_token_for_guild(guild_id):
         raise ValueError("Falta configurar DISCORD_TOKEN en Railway.")
     try:
         _discord_json(f"/guilds/{guild_id}", token=token)
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError) as error:
-        raise ValueError("El bot no está unido a ese servidor o ya no tiene acceso.") from error
+    except urllib.error.HTTPError as error:
+        if error.code in (403, 404):
+            raise ValueError("El bot no está unido a ese servidor o ya no tiene acceso.") from error
+        raise ValueError("Discord no pudo validar la pertenencia del bot al servidor.") from error
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        raise ValueError("No se pudo validar el servidor con Discord.") from error
     return token
 
 
@@ -112,7 +114,6 @@ def install_guild_profile_settings(handler_class):
         if not self.require_csrf(session):
             return self.send_error_json("Verificación de seguridad fallida. Recarga e inténtalo otra vez.", 403)
         try:
-            # The JSON includes a base64-encoded upload; the default helper's 4 KB cap is too small.
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= MAX_BODY:
                 raise ValueError("La solicitud es demasiado grande; la imagen debe pesar como máximo 2 MB.")
@@ -124,11 +125,13 @@ def install_guild_profile_settings(handler_class):
             avatar_data = str(data.get("avatar_url", "")).strip()
             if not guild_id.isdecimal():
                 raise ValueError("Selecciona un servidor válido.")
+            if not nickname and not avatar_data:
+                raise ValueError("Indica un apodo o selecciona una imagen antes de guardar.")
             if len(nickname) > 32:
                 raise ValueError("El apodo no puede superar 32 caracteres.")
             manageable = _manageable_guilds(session)
             if guild_id not in manageable:
-                raise ValueError("Debes ser propietario o administrador del servidor seleccionado.")
+                raise ValueError("El servidor seleccionado ya no está disponible o no tienes permisos de administración.")
             token = _bot_token_for_guild(guild_id)
             payload = {"nick": nickname or None}
             if avatar_data:
@@ -140,6 +143,8 @@ def install_guild_profile_settings(handler_class):
         except urllib.error.HTTPError as error:
             if error.code == 403:
                 return self.send_error_json("Discord rechazó el cambio; comprueba el rol y los permisos del bot.", 403)
+            if error.code == 404:
+                return self.send_error_json("El bot ya no está en ese servidor; actualiza la lista y selecciona otro.", 400)
             return self.send_error_json("Discord no pudo actualizar el perfil del bot.", 502)
         except (urllib.error.URLError, OSError):
             return self.send_error_json("No se pudo conectar con Discord.", 502)

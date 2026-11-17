@@ -1,24 +1,22 @@
 (() => {
-  const addAdminLink = async () => {
+  async function addAdminShortcut() {
     try {
-      const response = await fetch('/api/me', { cache: 'no-store', credentials: 'same-origin' });
+      const response = await fetch('/api/me', {cache: 'no-store', credentials: 'same-origin'});
       if (!response.ok) return;
       const session = await response.json();
       if (!session.authenticated || !session.is_admin) return;
 
-      const header = document.querySelector('.topbar');
-      if (!header || document.getElementById('adminShortcut')) return;
-      const link = document.createElement('a');
-      link.id = 'adminShortcut';
-      link.href = '/admin';
-      link.textContent = 'Administración';
-      link.setAttribute('aria-label', 'Abrir panel privado de administración');
-      link.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:20;padding:11px 16px;border:1px solid #fff;border-radius:12px;background:#fff;color:#050505;font:700 14px system-ui,sans-serif;text-decoration:none;box-shadow:0 0 18px #fff9';
-      document.body.appendChild(link);
+      const account = document.getElementById('cuenta');
+      if (!account || document.getElementById('adminShortcut')) return;
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.style.marginTop = '16px';
+      card.innerHTML = '<h3>Administración privada</h3><p class="muted">Gestiona keys y accesos Premium de usuarios.</p><a id="adminShortcut" class="button" href="/admin">Abrir panel de administración →</a>';
+      account.appendChild(card);
     } catch (_) {
-      // Do not display privileged navigation if authorization could not be verified.
+      // Fail closed: hide the admin entry if permission cannot be verified.
     }
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addAdminLink, { once: true });
-  else addAdminLink();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addAdminShortcut, {once: true});
+  else addAdminShortcut();
 })();
