@@ -1,4 +1,4 @@
-"""Install website guild filtering, statistics assets, and live Discord status hooks."""
+"""Install website guild filtering, complete command counts, and live Discord status hooks."""
 import os
 import threading
 from urllib.error import HTTPError, URLError
@@ -8,7 +8,7 @@ import guild_profile_settings
 import web_server
 
 _STATUS_LOCK = threading.RLock()
-_STATUS = {"online": False, "servers": 0, "slash_commands": 0}
+_STATUS = {"online": False, "servers": 0, "slash_commands": 0, "prefix_commands": 3}
 _STATS_FEATURES = [
     "Anti-Raid y alertas de seguridad",
     "Anti-Nuke con modo pánico manual",
@@ -19,9 +19,34 @@ _STATS_FEATURES = [
 ]
 
 
+def _command_leaf_names(commands, prefix=""):
+    """Return unique slash-command paths, counting group subcommands separately."""
+    names = set()
+    for command in commands:
+        name = f"{prefix} {command.name}".strip()
+        children = getattr(command, "commands", None)
+        if children:
+            names.update(_command_leaf_names(children, name))
+        else:
+            names.add(name)
+    return names
+
+
+def count_commands(tree, guild=None):
+    """Count registered global and guild slash commands, including group leaves."""
+    commands = list(tree.get_commands())
+    if guild is not None:
+        commands.extend(tree.get_commands(guild=guild))
+    return len(_command_leaf_names(commands))
+
+
 def set_bot_status(online, guild_count=0, command_count=0):
     with _STATUS_LOCK:
-        _STATUS.update(online=bool(online), servers=max(0, int(guild_count)), slash_commands=max(0, int(command_count)))
+        _STATUS.update(
+            online=bool(online),
+            servers=max(0, int(guild_count)),
+            slash_commands=max(0, int(command_count)),
+        )
 
 
 def _bot_present_guilds(guilds):
@@ -72,7 +97,14 @@ def install_website_api(handler_class):
             stats = public_stats()
             with _STATUS_LOCK:
                 status = dict(_STATUS)
-            stats.update(bot_online=status["online"], servers=status["servers"], slash_commands=status["slash_commands"], security_features=_STATS_FEATURES)
+            stats.update(
+                bot_online=status["online"],
+                servers=status["servers"],
+                slash_commands=status["slash_commands"],
+                prefix_commands=status["prefix_commands"],
+                total_commands=status["slash_commands"] + status["prefix_commands"],
+                security_features=_STATS_FEATURES,
+            )
             return self.send_json(stats)
         return previous_get(self)
 
@@ -80,9 +112,9 @@ def install_website_api(handler_class):
 
 
 def install_bot_status_hooks(app_file):
-    """Patch app.py so website status reflects Discord gateway readiness."""
+    """Patch app.py so site status reflects live and correctly synchronized commands."""
     source = app_file.read_text(encoding="utf-8")
-    marker = "# VANTARMOR_WEBSITE_STATUS_HOOKS_V1"
+    marker = "# VANTARMOR_WEBSITE_STATUS_HOOKS_V2"
     if marker in source:
         return
     import_anchor = "from discord import app_commands\n"
@@ -90,119 +122,33 @@ def install_bot_status_hooks(app_file):
         if import_anchor not in source:
             raise RuntimeError("No encontré el bloque de imports de app.py para el estado web.")
         source = source.replace(import_anchor, import_anchor + "import website_runtime_features\n", 1)
+
     ready_anchor = '    print(f"Conectado como {client.user}")\n'
-    ready_status = "    website_runtime_features.set_bot_status(True, len(client.guilds), len(tree.get_commands()))\n"
+    ready_status = "    website_runtime_features.set_bot_status(True, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n"
     if ready_anchor not in source:
         raise RuntimeError("No encontré on_ready para actualizar el estado de la web.")
     if ready_status not in source:
         source = source.replace(ready_anchor, ready_anchor + ready_status, 1)
+
+    sync_anchor = '        print(f"Comandos sincronizados: {len(commands)}")\n'
+    sync_status = "        await tree.sync()\n        website_runtime_features.set_bot_status(True, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n"
+    if sync_anchor not in source:
+        raise RuntimeError("No encontré la sincronización de comandos de servidor en app.py.")
+    if sync_status not in source:
+        source = source.replace(sync_anchor, sync_anchor + sync_status, 1)
+
     run_anchor = "client.run(TOKEN)\n"
     if run_anchor not in source:
         raise RuntimeError("No encontré client.run para conectar el estado web.")
     hooks = (
         "@client.event\nasync def on_disconnect():\n"
-        "    website_runtime_features.set_bot_status(False, len(client.guilds), len(tree.get_commands()))\n\n\n"
+        "    website_runtime_features.set_bot_status(False, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n\n\n"
         "@client.event\nasync def on_resumed():\n"
-        "    website_runtime_features.set_bot_status(True, len(client.guilds), len(tree.get_commands()))\n\n\n"
+        "    website_runtime_features.set_bot_status(True, len(client.guilds), website_runtime_features.count_commands(tree, GUILD))\n\n\n"
         f"{marker}\n"
     )
     source = source.replace(run_anchor, hooks + run_anchor, 1)
     app_file.write_text(source, encoding="utf-8")
 
 
-def install_website_assets():
-    index_file = os.path.join(os.path.dirname(__file__), "website", "index.html")
-    try:
-        with open(index_file, encoding="utf-8") as file:
-            html = file.read()
-    except OSError:
-        return
-    css = '<link rel="stylesheet" href="/assets/stats.css">'
-    script = '<script src="/assets/stats.js" defer></script>'
-    if css not in html:
-        html = html.replace("</head>", f"  {css}\n</head>", 1)
-    if script not in html:
-        html = html.replace("</body>", f"  {script}\n</body>", 1)
-    with open(index_file, "w", encoding="utf-8") as file:
-        file.write(html)
-
-
-def install_dynamic_tab_support(app_js):
-    app_js.parent.mkdir(parents=True, exist_ok=True)
-    if not app_js.exists():
-        app_js.write_text("""
-document.addEventListener('DOMContentLoaded', () => {
-  const menuToggle = document.getElementById('menu-toggle');
-  const nav = document.getElementById('nav');
-  if (menuToggle && nav) {
-    menuToggle.addEventListener('click', () => {
-      const expanded = menuToggle.getAttribute('aria-expanded') === 'true';
-      menuToggle.setAttribute('aria-expanded', String(!expanded));
-      nav.classList.toggle('open', !expanded);
-    });
-  }
-
-  const accountCard = document.getElementById('profile-card');
-  const getText = (value, fallback) => value ?? fallback;
-
-  fetch('/api/stats').then((res) => res.ok ? res.json() : null).then((stats) => {
-    if (!stats) return;
-    const online = document.querySelector('#estado .online');
-    if (online) online.textContent = stats.bot_online ? 'Operativo' : 'Sin conexión';
-  }).catch(() => {});
-
-  fetch('/api/me').then((res) => {
-    if (!res.ok) return;
-    return res.json();
-  }).then((session) => {
-    if (!session || !session.authenticated || !accountCard) return;
-    const avatar = document.getElementById('profile-avatar') || accountCard.querySelector('.avatar');
-    const name = document.getElementById('profile-name');
-    if (avatar) avatar.textContent = getText(session.user.name, 'User').slice(0, 1).toUpperCase();
-    if (name) name.textContent = getText(session.user.name, 'Usuario');
-  }).catch(() => {});
-});
-""".strip() + "\n", encoding="utf-8")
-        return
-    source = app_js.read_text(encoding="utf-8")
-    source = source.replace('const tabSections = [...document.querySelectorAll("main > section[id]")];', 'const getTabSections = () => [...document.querySelectorAll("main > section[id]")];')
-    source = source.replace('  const active = tabSections.find((section) => section.id === id) || tabSections[0];', '  const tabSections = getTabSections();\n  const active = tabSections.find((section) => section.id === id) || tabSections[0];')
-    if "window.activateTab = activateTab;" not in source:
-        source = source.replace("function toast(message) {", "window.activateTab = activateTab;\n\nfunction toast(message) {", 1)
-    source = source.replace('const result = await api("/api/guilds");', 'const result = await api("/api/settings/guilds");')
-    source = source.replace('const result = await api("/api/settings/guilds");', 'const result = await api("/api/settings/guilds");')
-    marker = "// VANTARMOR_INVITE_AFTER_LOGIN_V1"
-    if marker not in source:
-        source = source.replace(
-            "function setupPremiumKeyClaim() {",
-            marker + "\nfunction setupPremiumKeyClaim() {",
-            1,
-        )
-        configure_anchor = "  select?.addEventListener(\"change\", () => {\n"
-        source = source.replace(
-            configure_anchor,
-            configure_anchor + "    const headerInvite = document.querySelector('header a[href=\"/auth/discord\"]');\n",
-            1,
-        )
-        change_anchor = "    button.href = url.toString();\n"
-        source = source.replace(
-            change_anchor,
-            change_anchor + "    if (headerInvite && headerInvite.dataset.authenticated === \"true\") headerInvite.href = button.href;\n",
-            1,
-        )
-        auth_anchor = '  if (accountActions) accountActions.innerHTML = \'<a class="button secondary button-small" href="/auth/logout">Cerrar sesión</a>\';\n'
-        auth_code = '''  const headerInvite = document.querySelector('header a[href="/auth/discord"]');
-  const inviteButton = $("#invite-button");
-  if (headerInvite) {
-    headerInvite.textContent = "Invitar bot";
-    headerInvite.dataset.authenticated = "true";
-    headerInvite.href = inviteButton?.href || "/#invitar";
-    headerInvite.target = "_blank";
-    headerInvite.rel = "noopener";
-  }
-'''
-        source = source.replace(auth_anchor, auth_anchor + auth_code, 1)
-    app_js.write_text(source, encoding="utf-8")
-
-
-__all__ = ["install_bot_status_hooks", "install_dynamic_tab_support", "install_website_api", "install_website_assets", "set_bot_status"]
+__all__ = ["count_commands", "install_bot_status_hooks", "install_website_api", "set_bot_status"]

@@ -1,4 +1,4 @@
-"""Start the website and Discord bot as independent services in one Railway process."""
+"""Start the Railway website and Discord bot while keeping both services alive."""
 import runpy
 import threading
 from pathlib import Path
@@ -12,6 +12,7 @@ import guild_profile_settings
 from abuse_registration_patch import patch_app_file as patch_abuse_protection
 from anti_bot_registration_patch import patch_app_file as patch_anti_bot
 from anti_link_registration_patch import patch_app_file as patch_anti_link
+from premium_security_patch import patch_app_file as patch_premium_security
 from web_server import start_website
 
 ROOT = Path(__file__).resolve().parent
@@ -22,9 +23,11 @@ def run_bot():
     try:
         if not APP_FILE.is_file():
             raise FileNotFoundError(f"No encontré el archivo del bot: {APP_FILE}")
+        # Register every command module before starting the Discord client. All patches are idempotent.
         patch_anti_link(APP_FILE)
         patch_abuse_protection(APP_FILE)
         patch_anti_bot(APP_FILE)
+        patch_premium_security(APP_FILE)
         website_runtime_features.install_bot_status_hooks(APP_FILE)
         print("Iniciando Vantarmor Commands...")
         runpy.run_path(str(APP_FILE), run_name="__main__")
@@ -42,5 +45,6 @@ server = start_website()
 if server is None:
     raise RuntimeError("No se pudo iniciar el sitio: falta website/index.html.")
 threading.Thread(target=run_bot, name="vantarmor-bot", daemon=True).start()
-print("Web de Vantarmor escuchando; el proceso queda activo para Railway.")
-server.serve_forever()
+print("Sitio web activo en el puerto de Railway; proceso principal en espera.")
+# The HTTP server runs in its own daemon thread; keep this process alive even if the bot exits.
+threading.Event().wait()
