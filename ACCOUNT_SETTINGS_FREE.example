@@ -1,0 +1,2 @@
+# Remove the manager check for the free, per-server visual profile controls.
+# Only verify that the signed-in user administers that server, and the bot is a member.

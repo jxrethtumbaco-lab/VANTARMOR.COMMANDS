@@ -1,0 +1,3 @@
+# Vantarmor web admin panel and per-server bot profile changes require this manager ID list:
+# PREMIUM_MANAGER_IDS=discord_user_id_1,discord_user_id_2
+# Add this variable to Railway's Variables for the same service that runs the bot/web.

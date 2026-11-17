@@ -1,0 +1,2 @@
+# Remove Optional dependency at import time by using the Python 3.13 union annotation
+# (railway_start.py also retains its compatibility import repair).
