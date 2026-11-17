@@ -12,6 +12,7 @@ import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -136,11 +137,7 @@ async def _set_lockdown(guild, enabled, *, reason):
         overwrite = channel.overwrites_for(guild.default_role)
         overwrite.send_messages = previous
         try:
-            await channel.set_permissions(
-                guild.default_role,
-                overwrite=overwrite if not overwrite.is_empty() else None,
-                reason=reason,
-            )
+            await channel.set_permissions(guild.default_role, overwrite=overwrite if not overwrite.is_empty() else None, reason=reason)
         except (discord.Forbidden, discord.HTTPException):
             errors += 1
 
@@ -181,7 +178,7 @@ async def _check_audit_burst(guild, action, target_id, title):
             recent.append(stamp)
             if len(recent) >= int(rules.get("threshold", 3)):
                 recent.clear()
-                await _trigger_lockdown(guild, f"Anti-Nuke detectó {title} repetidos por {executor} (`{executor.id}`). No se expulsó ni se quitaron permisos automáticamente; revisa el registro de auditoría.")
+                await _trigger_lockdown(guild, f"Anti-Nuke detectó {title} repetidos por {executor} (`{executor.id}`).")
             return
     except (discord.Forbidden, discord.HTTPException) as error:
         print(f"No se pudo consultar audit log de {guild.id}: {error}")
@@ -224,11 +221,11 @@ async def on_member_join(member):
         if quarantine is not None and guild.me and guild.me.guild_permissions.manage_roles and quarantine < guild.me.top_role:
             try:
                 await member.add_roles(quarantine, reason=f"Cuenta creada hace menos de {minimum_days} días; revisión manual")
-                await _security_log(guild, "🕵️ Cuenta nueva retenida", f"{member.mention} (`{member.id}`) tiene una cuenta de menos de {minimum_days} días y recibió el rol de revisión.", color=discord.Color.orange())
+                await _security_log(guild, "🕵️ Cuenta nueva retenida", f"{member.mention} (`{member.id}`) tiene menos de {minimum_days} días y recibió el rol de revisión.")
             except (discord.Forbidden, discord.HTTPException) as error:
                 await _security_log(guild, "⚠️ Filtro de cuentas", f"No se pudo aplicar el rol de revisión a `{member.id}`: {error}", color=discord.Color.orange())
         else:
-            await _security_log(guild, "🕵️ Cuenta nueva detectada", f"{member.mention} (`{member.id}`) tiene menos de {minimum_days} días. Configura un rol de revisión para retenerla.", color=discord.Color.orange())
+            await _security_log(guild, "🕵️ Cuenta nueva detectada", f"{member.mention} (`{member.id}`) tiene menos de {minimum_days} días. Configura un rol de revisión.", color=discord.Color.orange())
 
     raid = state.get("anti_raid", {})
     if raid.get("enabled"):
@@ -246,7 +243,7 @@ async def on_member_join(member):
 async def on_invite_create(invite):
     state = _guild_config(invite.guild.id)
     if state.get("anti_raid", {}).get("enabled"):
-        await _security_log(invite.guild, "🔗 Invitación nueva durante Anti-Raid", f"Se creó una invitación en {invite.channel.mention if invite.channel else 'un canal desconocido'}. Revisa la actividad si ocurre un pico de entradas.", color=discord.Color.orange())
+        await _security_log(invite.guild, "🔗 Invitación nueva durante Anti-Raid", f"Se creó una invitación en {invite.channel.mention if invite.channel else 'un canal desconocido'}. Revisa la actividad.", color=discord.Color.orange())
 
 
 class CaptchaModal(discord.ui.Modal):
@@ -318,49 +315,27 @@ def register_security_commands(tree, client):
         if not await _require_premium_admin(interaction):
             return
         _update_guild(interaction.guild.id, lambda state: state.update(anti_raid={"enabled": activar, "threshold": int(umbral), "window_seconds": int(ventana)}))
-        await interaction.response.send_message(f"✅ Anti-Raid {'activado' if activar else 'desactivado'}: {umbral} entradas en {ventana} segundos. Si se alcanza el umbral, se activa el modo pánico.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Anti-Raid {'activado' if activar else 'desactivado'}: {umbral} entradas en {ventana} segundos.", ephemeral=True)
 
     @tree.command(name="anti-nuke", description="Detecta borrados/ban masivos y activa el modo pánico")
-    @app_commands.describe(activar="Activar o desactivar Anti-Nuke", umbral="Acciones del mismo usuario antes de activar el modo pánico", ventana="Ventana de detección en segundos")
+    @app_commands.describe(activar="Activar o desactivar Anti-Nuke", umbral="Acciones antes de activar el modo pánico", ventana="Ventana de detección en segundos")
     async def anti_nuke(interaction: discord.Interaction, activar: bool, umbral: app_commands.Range[int, 2, 10] = 3, ventana: app_commands.Range[int, 5, 60] = 10):
         if not await _require_premium_admin(interaction):
             return
         _update_guild(interaction.guild.id, lambda state: state.update(anti_nuke={"enabled": activar, "threshold": int(umbral), "window_seconds": int(ventana)}))
-        note = "El bot bloqueará canales y avisará; no expulsará ni quitará permisos automáticamente a administradores." if activar else ""
-        await interaction.response.send_message(f"✅ Anti-Nuke {'activado' if activar else 'desactivado'}: {umbral} acciones en {ventana} segundos. {note} Para identificar autores, da al bot Ver registro de auditoría.", ephemeral=True)
-
-    @tree.command(name="anti-bot", description="Autoriza o revoca bots permitidos en el servidor")
-    @app_commands.choices(accion=[app_commands.Choice(name="Autorizar", value="allow"), app_commands.Choice(name="Revocar", value="revoke")])
-    @app_commands.describe(accion="Acción sobre la lista autorizada", bot="Cuenta bot que se autoriza o revoca")
-    async def anti_bot(interaction: discord.Interaction, accion: app_commands.Choice[str], bot: discord.User):
-        if not await _require_premium_admin(interaction):
-            return
-        if not bot.bot:
-            await interaction.response.send_message("Selecciona una cuenta bot.", ephemeral=True)
-            return
-
-        def change(state):
-            allowed = {str(value) for value in state.get("allowed_bots", [])}
-            if accion.value == "allow":
-                allowed.add(str(bot.id))
-            else:
-                allowed.discard(str(bot.id))
-            state["allowed_bots"] = sorted(allowed)
-
-        _update_guild(interaction.guild.id, change)
-        await interaction.response.send_message(f"✅ Bot {bot.mention} {'autorizado' if accion.value == 'allow' else 'revocado'}. Los bots no autorizados que intenten entrar serán expulsados si la protección está activa.", ephemeral=True)
+        note = " El bot bloqueará canales y avisará, sin expulsar ni quitar permisos automáticamente a administradores." if activar else ""
+        await interaction.response.send_message(f"✅ Anti-Nuke {'activado' if activar else 'desactivado'}: {umbral} acciones en {ventana} segundos.{note}", ephemeral=True)
 
     @tree.command(name="filtro-cuentas", description="Retiene cuentas nuevas con un rol para revisión manual")
-    @app_commands.describe(dias="Antigüedad mínima en días (0 desactiva)", rol_revision="Rol de cuarentena configurado para ocultar canales privados")
+    @app_commands.describe(dias="Antigüedad mínima en días (0 desactiva)", rol_revision="Rol configurado para la revisión")
     async def account_age_filter(interaction: discord.Interaction, dias: app_commands.Range[int, 0, 365], rol_revision: Optional[discord.Role] = None):
         if not await _require_premium_admin(interaction):
             return
         _update_guild(interaction.guild.id, lambda state: state.update(min_account_age_days=int(dias), quarantine_role_id=rol_revision.id if rol_revision else None))
-        extra = " Configura los permisos del rol para que las cuentas retenidas solo vean el canal de revisión." if dias and rol_revision else " El filtro solo genera alertas hasta que elijas un rol de revisión."
-        await interaction.response.send_message(f"✅ Filtro de cuentas configurado: mínimo {dias} día(s).{extra}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Filtro de cuentas configurado: mínimo {dias} día(s).", ephemeral=True)
 
     @tree.command(name="lockdown", description="Activa o desactiva el modo pánico Premium")
-    @app_commands.describe(activar="True bloquea el envío de mensajes para @everyone; False restaura permisos previos")
+    @app_commands.describe(activar="True bloquea el envío para @everyone; False restaura permisos previos")
     async def lockdown(interaction: discord.Interaction, activar: bool):
         if not await _require_premium_admin(interaction):
             return
@@ -383,7 +358,7 @@ def register_security_commands(tree, client):
         await interaction.response.send_message(f"✅ Alertas de seguridad en {canal.mention}.", ephemeral=True)
 
     @tree.command(name="captcha-panel", description="Publica un panel de verificación con captcha Premium")
-    @app_commands.describe(canal="Canal público de verificación", rol_verificado="Rol que se asignará al superar el captcha")
+    @app_commands.describe(canal="Canal público de verificación", rol_verificado="Rol que se asignará")
     async def captcha_panel(interaction: discord.Interaction, canal: discord.TextChannel, rol_verificado: discord.Role):
         if not await _require_premium_admin(interaction):
             return
@@ -392,21 +367,15 @@ def register_security_commands(tree, client):
         if bot_member is None or not bot_member.guild_permissions.manage_roles or rol_verificado >= bot_member.top_role:
             await interaction.response.send_message("El bot necesita Administrar roles y su rol debe estar por encima del rol verificado.", ephemeral=True)
             return
-        embed = discord.Embed(
-            title="🛡️ Verificación del servidor",
-            description="Pulsa **Verificar** y resuelve la operación sencilla para recibir el rol de acceso. Configura los permisos de @everyone para limitar el acceso hasta verificar.",
-            color=discord.Color.blurple(),
-        )
+        embed = discord.Embed(title="🛡️ Verificación del servidor", description="Pulsa Verificar y resuelve una operación sencilla para recibir el rol de acceso.", color=discord.Color.blurple())
         try:
             message = await canal.send(embed=embed, view=CaptchaView(), allowed_mentions=discord.AllowedMentions.none())
         except (discord.Forbidden, discord.HTTPException) as error:
             await interaction.response.send_message(f"No pude publicar el panel: {error}", ephemeral=True)
             return
-
         def save_panel(state):
             panels = state.setdefault("captcha_panels", {})
             panels[str(message.id)] = {"guild_id": guild.id, "verified_role_id": rol_verificado.id, "channel_id": canal.id}
-
         _update_guild(guild.id, save_panel)
         await interaction.response.send_message(f"✅ Panel de captcha enviado a {canal.mention}.", ephemeral=True)
 
@@ -415,19 +384,17 @@ def register_security_commands(tree, client):
         if not await _require_premium_admin(interaction):
             return
         state = _guild_config(interaction.guild.id)
-        raid = state.get("anti_raid", {})
-        nuke = state.get("anti_nuke", {})
-        lockdown_state = state.get("lockdown", {}).get("active", False)
+        raid, nuke = state.get("anti_raid", {}), state.get("anti_nuke", {})
         embed = discord.Embed(title="🛡️ Seguridad Premium", color=discord.Color.blurple())
-        embed.add_field(name="Anti-Raid", value=f"{'Activo' if raid.get('enabled') else 'Inactivo'} · {raid.get('threshold', 6)} entradas / {raid.get('window_seconds', 10)} s", inline=False)
-        embed.add_field(name="Anti-Nuke", value=f"{'Activo' if nuke.get('enabled') else 'Inactivo'} · {nuke.get('threshold', 3)} acciones / {nuke.get('window_seconds', 10)} s", inline=False)
+        embed.add_field(name="Anti-Raid", value="Activo" if raid.get("enabled") else "Inactivo", inline=False)
+        embed.add_field(name="Anti-Nuke", value="Activo" if nuke.get("enabled") else "Inactivo", inline=False)
         embed.add_field(name="Bots autorizados", value=str(len(state.get("allowed_bots", []))), inline=True)
         embed.add_field(name="Antigüedad mínima", value=f"{state.get('min_account_age_days', 0)} días", inline=True)
-        embed.add_field(name="Modo pánico", value="Activo" if lockdown_state else "Inactivo", inline=True)
+        embed.add_field(name="Modo pánico", value="Activo" if state.get("lockdown", {}).get("active") else "Inactivo", inline=True)
         embed.add_field(name="Captcha", value=f"{len(state.get('captcha_panels', {}))} panel(es)", inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    return (anti_raid, anti_nuke, anti_bot, account_age_filter, lockdown, security_log, captcha_panel, security_status)
+    return (anti_raid, anti_nuke, account_age_filter, lockdown, security_log, captcha_panel, security_status)
 
 
 __all__ = ["register_security_commands"]
