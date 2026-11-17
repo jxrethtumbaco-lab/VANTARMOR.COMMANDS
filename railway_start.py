@@ -1,4 +1,4 @@
-"""Start the Railway website and Discord bot while keeping both services alive."""
+"""Start the Railway website and Discord bot as independent services."""
 import runpy
 import threading
 from pathlib import Path
@@ -23,12 +23,14 @@ def run_bot():
     try:
         if not APP_FILE.is_file():
             raise FileNotFoundError(f"No encontré el archivo del bot: {APP_FILE}")
-        # Register every command module before starting the Discord client. All patches are idempotent.
+
+        # All registrations are idempotent and complete before the Discord client starts.
         patch_anti_link(APP_FILE)
         patch_abuse_protection(APP_FILE)
         patch_anti_bot(APP_FILE)
         patch_premium_security(APP_FILE)
         website_runtime_features.install_bot_status_hooks(APP_FILE)
+
         print("Iniciando Vantarmor Commands...")
         runpy.run_path(str(APP_FILE), run_name="__main__")
     except Exception as exc:
@@ -36,15 +38,18 @@ def run_bot():
         print(f"El bot no pudo iniciar; el sitio web seguirá activo: {type(exc).__name__}: {exc}")
 
 
+# Install web APIs before accepting requests.
 website_runtime_features.install_website_api(web_server.Handler)
 website_public_config.install_public_website_config(web_server.Handler)
 website_profile_api.install_profile_api(web_server.Handler)
 guild_profile_settings.install_guild_profile_settings(web_server.Handler)
 website_admin_gate.install_admin_entry(web_server.Handler)
+
 server = start_website()
 if server is None:
     raise RuntimeError("No se pudo iniciar el sitio: falta website/index.html.")
+
 threading.Thread(target=run_bot, name="vantarmor-bot", daemon=True).start()
-print("Sitio web activo en el puerto de Railway; proceso principal en espera.")
-# The HTTP server runs in its own daemon thread; keep this process alive even if the bot exits.
+print("Sitio web activo; el bot inicia en un hilo independiente.")
+# Keep Railway's main process alive even if the bot exits; HTTP server runs in its own thread.
 threading.Event().wait()

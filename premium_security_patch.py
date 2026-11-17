@@ -1,8 +1,8 @@
+"""Inject premium security registration into the Discord app."""
 from pathlib import Path
 
 IMPORT_LINE = "from premium_security_system import register_security_commands\n"
 REGISTER_LINE = "register_security_commands(tree, client)\n"
-
 FREE_SECURITY_GUARD = (
     '    if interaction.command and interaction.command.name not in {"lockdown", "filtro-cuentas"} '
     'and not is_premium_user(interaction.user.id):\n'
@@ -24,10 +24,20 @@ def patch_app_file(app_file: Path) -> None:
         source = source.replace(tree_anchor, tree_anchor + REGISTER_LINE, 1)
     app_file.write_text(source, encoding="utf-8")
 
-    # Patch legacy source if present. Accept the newer equivalent guard too,
-    # rather than crashing when the source has already been updated.
     security_file = app_file.with_name("premium_security_system.py")
     security_source = security_file.read_text(encoding="utf-8")
+    # /anti-bot is registered by anti_bot_approval.py and should only expose the
+    # activar/desactivar action. Remove the older allow/revoke + bot-user command.
+    start = security_source.find('    @tree.command(name="anti-bot"')
+    end = security_source.find('    @tree.command(name="filtro-cuentas"', start) if start >= 0 else -1
+    if start >= 0 and end > start:
+        security_source = security_source[:start] + security_source[end:]
+        security_source = security_source.replace(
+            "return (anti_raid, anti_nuke, anti_bot, account_age_filter, lockdown, security_log, captcha_panel, security_status)",
+            "return (anti_raid, anti_nuke, account_age_filter, lockdown, security_log, captcha_panel, security_status)",
+        )
+        security_file.write_text(security_source, encoding="utf-8")
+
     if OLD_PREMIUM_GUARD in security_source:
         security_source = security_source.replace(OLD_PREMIUM_GUARD, FREE_SECURITY_GUARD, 1)
         security_file.write_text(security_source, encoding="utf-8")
