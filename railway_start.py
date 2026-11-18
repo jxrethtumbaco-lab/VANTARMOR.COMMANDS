@@ -12,6 +12,7 @@ import guild_profile_settings
 from abuse_registration_patch import patch_app_file as patch_abuse_protection
 from anti_bot_registration_patch import patch_app_file as patch_anti_bot
 from anti_link_registration_patch import patch_app_file as patch_anti_link
+from autorole_join_patch import patch_app_file as patch_autorole_join
 from cookie_game_patch import patch_app_file as patch_cookie_game
 from giveaway_patch import patch_app_file as patch_giveaways
 from message_reactions_patch import patch_app as patch_message_reactions
@@ -35,6 +36,7 @@ def run_bot():
             ("Seguridad Premium", patch_premium_security),
             ("Moderación por prefijo", patch_prefix_moderation),
             ("Reacciones por prefijo", patch_message_reactions),
+            ("Evento de autorol/bienvenida", patch_autorole_join),
             ("Bienvenidas y copias", patch_premium_backup),
             ("Cookie y userinfo", patch_cookie_game),
             ("Sorteos", patch_giveaways),
@@ -45,12 +47,13 @@ def run_bot():
         source = APP_FILE.read_text(encoding="utf-8")
         compile(source, str(APP_FILE), "exec")
         website_runtime_features.install_bot_status_hooks(APP_FILE)
+        source = APP_FILE.read_text(encoding="utf-8")
+        compile(source, str(APP_FILE), "exec")
         print("Módulos de comandos registrados. Arrancando Discord…")
         runpy.run_path(str(APP_FILE), run_name="__main__")
     except Exception as exc:
         website_runtime_features.set_bot_status(False)
         print(f"El bot no pudo iniciar: {type(exc).__name__}: {exc}")
-        raise
 
 
 website_runtime_features.install_website_api(web_server.Handler)
