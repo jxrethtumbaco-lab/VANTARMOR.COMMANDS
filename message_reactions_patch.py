@@ -2,6 +2,8 @@ from pathlib import Path
 
 REACTION_MARKER = "# VANTARMOR_MESSAGE_REACTIONS_V2"
 REACTION_HELPERS = r'''# VANTARMOR_MESSAGE_REACTIONS_V2
+import random
+
 BANANA_GIFS = (
     "https://media.tenor.com/nBEH0FvRR0UAAAAM/banana-anime.gif",
     "https://media.giphy.com/media/vk7VesvyZEwuY/giphy.gif",
@@ -31,10 +33,7 @@ async def random_anime_gif(action):
         random.shuffle(endpoints)
         for endpoint in endpoints:
             try:
-                request = urllib.request.Request(
-                    endpoint,
-                    headers={"User-Agent": "Vantarmor-Commands/1.0", "Accept": "application/json"},
-                )
+                request = urllib.request.Request(endpoint, headers={"User-Agent": "Vantarmor-Commands/1.0", "Accept": "application/json"})
                 with urllib.request.urlopen(request, timeout=4) as response:
                     data = json.loads(response.read(256 * 1024).decode("utf-8"))
                 results = data.get("results", [])
@@ -58,8 +57,7 @@ async def random_anime_gif(action):
 class HugReturnView(discord.ui.View):
     def __init__(self, initiator, recipient):
         super().__init__(timeout=300)
-        self.initiator = initiator
-        self.recipient = recipient
+        self.initiator, self.recipient = initiator, recipient
         self.finished = False
 
     async def interaction_check(self, interaction):
@@ -85,15 +83,12 @@ class HugReturnView(discord.ui.View):
 class ReactionChoiceView(discord.ui.View):
     def __init__(self, initiator, recipient, action):
         super().__init__(timeout=300)
-        self.initiator = initiator
-        self.recipient = recipient
-        self.action = action
+        self.initiator, self.recipient, self.action = initiator, recipient, action
         self.finished = False
         if action == "kiss":
             accept = discord.ui.Button(label="💋 Coincidir", style=discord.ButtonStyle.success)
             reject = discord.ui.Button(label="Rechazar", style=discord.ButtonStyle.secondary)
-            accept.callback = self.match
-            reject.callback = self.reject
+            accept.callback, reject.callback = self.match, self.reject
             self.add_item(accept)
             self.add_item(reject)
         else:
@@ -115,35 +110,26 @@ class ReactionChoiceView(discord.ui.View):
         for item in self.children:
             item.disabled = True
         if self.action == "kiss" and outcome == "match":
-            text = f"💋 {self.recipient.mention} ha devuelto el beso a {self.initiator.mention}."
-            image = await random_anime_gif("kiss")
+            text, image = f"💋 {self.recipient.mention} ha devuelto el beso a {self.initiator.mention}.", await random_anime_gif("kiss")
         elif self.action == "kiss":
-            text = f"🤦 {self.recipient.mention} ha rechazado el beso de {self.initiator.mention}."
-            image = None
+            text, image = f"🤦 {self.recipient.mention} ha rechazado el beso de {self.initiator.mention}.", None
         else:
-            text = f"😡 {self.recipient.mention} ha devuelto la bofetada a {self.initiator.mention}."
-            image = await random_anime_gif("slap")
+            text, image = f"😡 {self.recipient.mention} ha devuelto la bofetada a {self.initiator.mention}.", await random_anime_gif("slap")
         embed = discord.Embed(description=text, color=discord.Color.blurple())
         if image:
             embed.set_image(url=image)
         await interaction.response.edit_message(content=None, embed=embed, view=self, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
 
-    async def match(self, interaction):
-        await self.finish(interaction, "match")
-
-    async def reject(self, interaction):
-        await self.finish(interaction, "reject")
-
-    async def return_slap(self, interaction):
-        await self.finish(interaction, "return")
+    async def match(self, interaction): await self.finish(interaction, "match")
+    async def reject(self, interaction): await self.finish(interaction, "reject")
+    async def return_slap(self, interaction): await self.finish(interaction, "return")
 
 
 async def handle_reaction_command(message, content):
     command = content.split(maxsplit=1)[0].casefold() if content else ""
     if command == "?banana":
         target = message.mentions[0] if message.mentions else message.author
-        if getattr(target, "bot", False):
-            target = message.author
+        if getattr(target, "bot", False): target = message.author
         size = random.randint(1, 40)
         embed = discord.Embed(description=f"La banana de {target.mention} mide **{size} cm** 🍌", color=discord.Color.blurple())
         embed.set_author(name=str(target), icon_url=target.display_avatar.url)
@@ -169,14 +155,12 @@ async def handle_reaction_command(message, content):
         if command == "?hug":
             embed = discord.Embed(description=f"🤗 {message.author.mention} ha abrazado a {target.mention}.", color=discord.Color.blurple())
             image = await random_anime_gif("hug")
-            if image:
-                embed.set_image(url=image)
+            if image: embed.set_image(url=image)
             await message.reply(embed=embed, view=HugReturnView(message.author, target), mention_author=False, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
             return True
         embed = discord.Embed(description=f"🍑 {message.author.mention} le da una palmadita juguetona en la ropa a {target.mention}. *(Broma amistosa.)*", color=discord.Color.blurple())
         image = await random_anime_gif("spank")
-        if image:
-            embed.set_image(url=image)
+        if image: embed.set_image(url=image)
         await message.reply(embed=embed, mention_author=False, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
         return True
 
@@ -199,8 +183,7 @@ async def handle_reaction_command(message, content):
     verb = "ha besado a" if action == "kiss" else "ha abofeteado a"
     embed = discord.Embed(description=f"{'💋' if action == 'kiss' else '👋'} {message.author.mention} {verb} {target.mention}.", color=discord.Color.blurple())
     image = await random_anime_gif(action)
-    if image:
-        embed.set_image(url=image)
+    if image: embed.set_image(url=image)
     await message.reply(embed=embed, view=ReactionChoiceView(message.author, target, action), mention_author=False, allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False))
     return True
 '''
@@ -211,13 +194,11 @@ def patch_app(app_file: Path) -> None:
     event_marker = "@client.event\nasync def on_message(message):\n"
     if event_marker not in source:
         raise RuntimeError("No encontré on_message en app.py para instalar comandos de reacción.")
-
     if REACTION_MARKER in source:
         start = source.index(REACTION_MARKER)
         end = source.index(event_marker, start)
         source = source[:start] + source[end:]
     source = source.replace(event_marker, REACTION_HELPERS + "\n\n" + event_marker, 1)
-
     content_line = "    content = message.content.strip()\n"
     dispatch = "    if await handle_reaction_command(message, content):\n        return\n"
     if content_line not in source:

@@ -1,4 +1,4 @@
-"""Make the website show counts and status for all registered commands."""
+"""Count registered global/guild slash commands, including subcommand leaves."""
 import os
 import threading
 from urllib.error import HTTPError, URLError
@@ -8,7 +8,7 @@ import guild_profile_settings
 import web_server
 
 _STATUS_LOCK = threading.RLock()
-_STATUS = {"online": False, "servers": 0, "slash_commands": 0, "prefix_commands": 9}
+_STATUS = {"online": False, "servers": 0, "slash_commands": 0}
 _STATS_FEATURES = [
     "Anti-Raid y alertas de seguridad",
     "Anti-Nuke con modo pánico manual",
@@ -89,7 +89,7 @@ def install_website_api(handler_class):
             stats = public_stats()
             with _STATUS_LOCK:
                 status = dict(_STATUS)
-            stats.update(bot_online=status["online"], servers=status["servers"], slash_commands=status["slash_commands"], prefix_commands=status["prefix_commands"], total_commands=status["slash_commands"] + status["prefix_commands"], security_features=_STATS_FEATURES)
+            stats.update(bot_online=status["online"], servers=status["servers"], slash_commands=status["slash_commands"], security_features=_STATS_FEATURES)
             return self.send_json(stats)
         return previous_get(self)
 
